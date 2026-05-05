@@ -1,15 +1,18 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { createClient } from "@libsql/client";
+import { drizzle } from "drizzle-orm/libsql";
+import { migrate } from "drizzle-orm/libsql/migrator";
 import path from "node:path";
-import fs from "node:fs";
 
-const dbDir = path.join(process.cwd(), "data");
-if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
-const sqlite = new Database(path.join(dbDir, "fold.db"));
-sqlite.pragma("journal_mode = WAL");
-sqlite.pragma("foreign_keys = ON");
+const client = createClient({
+  url: process.env.TURSO_DATABASE_URL!,
+  authToken: process.env.TURSO_AUTH_TOKEN,
+});
 
-const db = drizzle(sqlite);
-migrate(db, { migrationsFolder: path.join(process.cwd(), "drizzle/migrations") });
-console.log("✓ migrated");
+const db = drizzle(client);
+
+async function main() {
+  await migrate(db, { migrationsFolder: path.join(process.cwd(), "drizzle/migrations") });
+  console.log("✓ migrated");
+}
+
+main();

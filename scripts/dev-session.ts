@@ -1,11 +1,15 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import { createClient } from "@libsql/client";
+import { drizzle } from "drizzle-orm/libsql";
 import { randomBytes } from "node:crypto";
 import { sessions } from "../drizzle/schema";
 
-const db = drizzle(new Database("./data/fold.db"));
+const client = createClient({
+  url: process.env.TURSO_DATABASE_URL!,
+  authToken: process.env.TURSO_AUTH_TOKEN,
+});
+const db = drizzle(client);
+
 const id = randomBytes(32).toString("hex");
-db.insert(sessions)
-  .values({ id, userId: 1, expiresAt: new Date(Date.now() + 86400_000) })
-  .run();
+await db.insert(sessions)
+  .values({ id, userId: 1, expiresAt: new Date(Date.now() + 86400_000) });
 console.log(id);

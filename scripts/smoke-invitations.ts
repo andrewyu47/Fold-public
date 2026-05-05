@@ -8,12 +8,11 @@
  * Usage: tsx scripts/smoke-invitations.ts (requires `npx next dev -p 3010` running)
  */
 
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import { createClient } from "@libsql/client";
+import { drizzle } from "drizzle-orm/libsql";
 import { eq, like } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
-import path from "node:path";
 import * as schema from "../drizzle/schema";
 import {
   perStudentHealth,
@@ -25,9 +24,11 @@ import {
 const { users, sessions, students, attendances, events } = schema;
 
 const BASE = process.env.BASE_URL ?? "http://127.0.0.1:3010";
-const sqlite = new Database(path.join(process.cwd(), "data", "fold.db"));
-sqlite.pragma("foreign_keys = ON");
-const db = drizzle(sqlite, { schema });
+const client = createClient({
+  url: process.env.TURSO_DATABASE_URL!,
+  authToken: process.env.TURSO_AUTH_TOKEN,
+});
+const db = drizzle(client, { schema });
 
 async function ensureUser() {
   const email = "smoke-invites@example.com";
@@ -47,14 +48,12 @@ async function mintCookie(userId: number) {
 
 async function cleanup() {
   // Null out any invited_by references pointing at smoke-test rows first
-  sqlite
-    .prepare(
-      "UPDATE students SET invited_by_student_id = NULL WHERE invited_by_student_id IN (SELECT id FROM students WHERE first_name LIKE 'INV-Smoke-%')"
-    )
-    .run();
+  await client.execute(
+    "UPDATE students SET invited_by_student_id = NULL WHERE invited_by_student_id IN (SELECT id FROM students WHERE first_name LIKE 'INV-Smoke-%')"
+  );
   // Wipe smoke-test events + students from prior runs
-  sqlite.prepare("DELETE FROM events WHERE name LIKE 'INV-SMOKE-%'").run();
-  sqlite.prepare("DELETE FROM students WHERE first_name LIKE 'INV-Smoke-%'").run();
+  await client.execute("DELETE FROM events WHERE name LIKE 'INV-SMOKE-%'");
+  await client.execute("DELETE FROM students WHERE first_name LIKE 'INV-Smoke-%'");
 }
 
 async function ensureInviter() {
@@ -182,9 +181,9 @@ async function main() {
   console.log("\n🎉 Feature 2 smoke test passed.");
 
   // Final cleanup
-  sqlite.prepare("DELETE FROM events WHERE id = ?").run(cJson.eventId);
-  sqlite.prepare("DELETE FROM students WHERE id = ?").run(tony.id);
-  sqlite.prepare("DELETE FROM students WHERE first_name LIKE 'INV-Smoke-%'").run();
+  await client.execute({ sql: "DELETE FROM events WHERE id = ?", args: [cJson.eventId] });
+  await client.execute({ sql: "DELETE FROM students WHERE id = ?", args: [tony.id] });
+  await client.execute("DELETE FROM students WHERE first_name LIKE 'INV-Smoke-%'");
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

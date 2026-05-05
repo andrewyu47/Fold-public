@@ -5,20 +5,20 @@
  * Usage: tsx scripts/smoke-draft.ts (requires `npx next dev -p 3010` running)
  */
 
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import { createClient } from "@libsql/client";
+import { drizzle } from "drizzle-orm/libsql";
 import { eq, desc } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
-import path from "node:path";
 import * as schema from "../drizzle/schema";
 const { users, sessions, students } = schema;
 
 const BASE = process.env.BASE_URL ?? "http://127.0.0.1:3010";
-const sqlite = new Database(path.join(process.cwd(), "data", "fold.db"));
-sqlite.pragma("journal_mode = WAL");
-sqlite.pragma("foreign_keys = ON");
-const db = drizzle(sqlite, { schema });
+const client = createClient({
+  url: process.env.TURSO_DATABASE_URL!,
+  authToken: process.env.TURSO_AUTH_TOKEN,
+});
+const db = drizzle(client, { schema });
 
 async function ensureUser(email: string, displayName: string) {
   let [u] = await db.select().from(users).where(eq(users.email, email)).limit(1);

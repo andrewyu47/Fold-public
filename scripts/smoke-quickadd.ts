@@ -5,20 +5,20 @@
  * Usage: tsx scripts/smoke-quickadd.ts (requires `npx next dev -p 3010` running)
  */
 
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import { eq, and, like, gte } from "drizzle-orm";
+import { createClient } from "@libsql/client";
+import { drizzle } from "drizzle-orm/libsql";
+import { eq, and, like, gte, sql } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
-import path from "node:path";
 import * as schema from "../drizzle/schema";
 const { users, sessions, events } = schema;
 
 const BASE = process.env.BASE_URL ?? "http://127.0.0.1:3010";
-const sqlite = new Database(path.join(process.cwd(), "data", "fold.db"));
-sqlite.pragma("journal_mode = WAL");
-sqlite.pragma("foreign_keys = ON");
-const db = drizzle(sqlite, { schema });
+const client = createClient({
+  url: process.env.TURSO_DATABASE_URL!,
+  authToken: process.env.TURSO_AUTH_TOKEN,
+});
+const db = drizzle(client, { schema });
 
 async function ensureUser(email: string, displayName: string) {
   let [u] = await db.select().from(users).where(eq(users.email, email)).limit(1);
@@ -38,7 +38,7 @@ async function mintCookie(userId: number) {
 
 async function cleanup() {
   // Remove smoke-test events from prior runs (anything starting with SMOKETEST-).
-  sqlite.prepare("DELETE FROM events WHERE name LIKE 'SMOKETEST-%'").run();
+  await client.execute("DELETE FROM events WHERE name LIKE 'SMOKETEST-%'");
 }
 
 async function main() {
@@ -82,11 +82,10 @@ async function main() {
   const c1Json = await c1.json();
   console.log("commit:", c1.status, c1Json);
 
-  const inserted = sqlite
-    .prepare("SELECT COUNT(*) as c FROM events WHERE name LIKE 'SMOKETEST-%'")
-    .get() as { c: number };
-  console.log(`DB: ${inserted.c} SMOKETEST events present (expected 3)`);
-  if (inserted.c !== 3) {
+  const inserted = await client.execute("SELECT COUNT(*) as c FROM events WHERE name LIKE 'SMOKETEST-%'");
+  const insertedCount = inserted.rows[0].c as number;
+  console.log(`DB: ${insertedCount} SMOKETEST events present (expected 3)`);
+  if (insertedCount !== 3) {
     console.log("❌ wrong count");
     process.exit(1);
   }

@@ -1,15 +1,27 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import { createClient, type Client } from "@libsql/client";
+import { drizzle, type LibSQLDatabase } from "drizzle-orm/libsql";
 import * as schema from "../../drizzle/schema";
-import path from "node:path";
-import fs from "node:fs";
 
-const dbDir = path.join(process.cwd(), "data");
-if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
+let _client: Client | undefined;
+let _db: LibSQLDatabase<typeof schema> | undefined;
 
-const sqlite = new Database(path.join(dbDir, "fold.db"));
-sqlite.pragma("journal_mode = WAL");
-sqlite.pragma("foreign_keys = ON");
+function getClient() {
+  if (!_client) {
+    _client = createClient({
+      url: process.env.TURSO_DATABASE_URL!,
+      authToken: process.env.TURSO_AUTH_TOKEN,
+    });
+  }
+  return _client;
+}
 
-export const db = drizzle(sqlite, { schema });
+export const db = new Proxy({} as LibSQLDatabase<typeof schema>, {
+  get(_target, prop, receiver) {
+    if (!_db) {
+      _db = drizzle(getClient(), { schema });
+    }
+    return Reflect.get(_db, prop, receiver);
+  },
+});
+
 export { schema };

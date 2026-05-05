@@ -6,20 +6,20 @@
  * Usage: tsx scripts/smoke-funnel.ts (requires `npm run dev` on :3000)
  */
 
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import { createClient } from "@libsql/client";
+import { drizzle } from "drizzle-orm/libsql";
 import { eq } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
-import path from "node:path";
 import * as schema from "../drizzle/schema";
 const { users, sessions, students, contactAttempts } = schema;
 
 const BASE = process.env.BASE_URL ?? "http://127.0.0.1:3000";
-const sqlite = new Database(path.join(process.cwd(), "data", "fold.db"));
-sqlite.pragma("journal_mode = WAL");
-sqlite.pragma("foreign_keys = ON");
-const db = drizzle(sqlite, { schema });
+const client = createClient({
+  url: process.env.TURSO_DATABASE_URL!,
+  authToken: process.env.TURSO_AUTH_TOKEN,
+});
+const db = drizzle(client, { schema });
 
 async function ensureUser(email: string, displayName: string) {
   let [u] = await db.select().from(users).where(eq(users.email, email)).limit(1);
@@ -39,11 +39,9 @@ async function mintCookie(userId: number) {
 
 async function cleanup() {
   // Remove any leftover smoke-test rows from prior runs.
-  sqlite
-    .prepare(
-      "DELETE FROM students WHERE (first_name IN ('Mike','Michael') AND last_name = 'Park') OR (first_name = 'Hannah' AND last_name IN ('Lee','Choi'))"
-    )
-    .run();
+  await client.execute(
+    "DELETE FROM students WHERE (first_name IN ('Mike','Michael') AND last_name = 'Park') OR (first_name = 'Hannah' AND last_name IN ('Lee','Choi'))"
+  );
 }
 
 async function main() {
@@ -173,19 +171,20 @@ async function main() {
     .select()
     .from(contactAttempts)
     .where(eq(contactAttempts.studentId, mike.id));
-  const totalMikes = sqlite
-    .prepare("SELECT COUNT(*) as c FROM students WHERE first_name IN ('Mike','Michael')")
-    .get() as { c: number };
+  const totalMikes = await client.execute(
+    "SELECT COUNT(*) as c FROM students WHERE first_name IN ('Mike','Michael')"
+  );
+  const totalMikesCount = totalMikes.rows[0].c as number;
 
   console.log("\n=== Final state ===");
   console.log(`Mike row → stage=${mike2.funnelStage}`);
-  console.log(`Total Mike/Michael rows in DB: ${totalMikes.c} (must be 1)`);
+  console.log(`Total Mike/Michael rows in DB: ${totalMikesCount} (must be 1)`);
   console.log(`Contact attempts on Mike: ${attempts.length}`);
   for (const a of attempts) {
     console.log(`  • channel=${a.channel}, by=${a.attemptedByUserId}, responded=${a.responded}`);
   }
 
-  if (totalMikes.c !== 1) {
+  if (totalMikesCount !== 1) {
     console.log("❌ FAIL: duplicate row was created.");
     process.exit(1);
   }

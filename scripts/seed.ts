@@ -1,25 +1,22 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import path from "node:path";
-import fs from "node:fs";
+import { createClient } from "@libsql/client";
+import { drizzle } from "drizzle-orm/libsql";
 import bcrypt from "bcryptjs";
 import { users, students, events, attendances } from "../drizzle/schema";
+import { sql } from "drizzle-orm";
 
-const dbDir = path.join(process.cwd(), "data");
-if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
+const client = createClient({
+  url: process.env.TURSO_DATABASE_URL!,
+  authToken: process.env.TURSO_AUTH_TOKEN,
+});
+const db = drizzle(client);
 
-const sqlite = new Database(path.join(dbDir, "fold.db"));
-sqlite.pragma("journal_mode = WAL");
-sqlite.pragma("foreign_keys = ON");
-const db = drizzle(sqlite);
-
+async function main() {
 // 1. Create admin user
 const hash = bcrypt.hashSync("password123", 10);
-const [admin] = db
+const [admin] = await db
   .insert(users)
   .values({ email: "admin@example.com", displayName: "Admin", passwordHash: hash })
-  .returning()
-  .all();
+  .returning();
 console.log("Created user:", admin.email);
 
 // 2. Create students
@@ -51,20 +48,19 @@ const studentData: Array<{
   { firstName: "Kendall", lastName: "Harris", gender: "F", year: "senior" },
 ];
 
-const createdStudents = db
+const createdStudents = await db
   .insert(students)
   .values(studentData.map((s) => ({ ...s, funnelStage: "active" as const })))
-  .returning()
-  .all();
+  .returning();
 console.log(`Created ${createdStudents.length} students`);
 
 // Set some invitedByStudentId relationships
 const studentIds = createdStudents.map((s) => s.id);
 for (let i = 5; i < studentIds.length; i += 3) {
   const inviterIdx = i % 5;
-  sqlite
-    .prepare("UPDATE students SET invited_by_student_id = ? WHERE id = ?")
-    .run(studentIds[inviterIdx], studentIds[i]);
+  await db.run(
+    sql`UPDATE students SET invited_by_student_id = ${studentIds[inviterIdx]} WHERE id = ${studentIds[i]}`
+  );
 }
 console.log("Set invitation relationships");
 
@@ -80,7 +76,7 @@ const eventData = [
   { name: "End of Quarter Party", startDate: new Date("2025-11-15T18:00:00") },
 ];
 
-const createdEvents = db.insert(events).values(eventData).returning().all();
+const createdEvents = await db.insert(events).values(eventData).returning();
 console.log(`Created ${createdEvents.length} events`);
 
 // 4. Create attendance records (8-12 per event, randomized)
@@ -96,18 +92,19 @@ const rand = seededRandom(42);
 let attendanceCount = 0;
 
 for (const evt of createdEvents) {
-  const count = 8 + Math.floor(rand() * 5); // 8-12
+  const count = 8 + Math.floor(rand() * 5);
   const shuffled = [...studentIds].sort(() => rand() - 0.5);
-  const attendees = shuffled.slice(0, count);
+  const attendeeIds = shuffled.slice(0, count);
 
-  for (const sid of attendees) {
-    db.insert(attendances)
-      .values({ studentId: sid, eventId: evt.id, recordedBy: admin.id })
-      .run();
+  for (const sid of attendeeIds) {
+    await db.insert(attendances).values({ studentId: sid, eventId: evt.id, recordedBy: admin.id });
     attendanceCount++;
   }
 }
 console.log(`Created ${attendanceCount} attendance records`);
 
-sqlite.close();
+client.close();
 console.log("Seed complete.");
+}
+
+main();
