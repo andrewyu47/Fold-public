@@ -1,0 +1,1 @@
+ALTER TABLE `students` ADD `invited_by_student_id` integer REFERENCES students(id);

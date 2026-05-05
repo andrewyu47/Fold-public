@@ -1,0 +1,31 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light dark;
+}
+
+html, body { height: 100%; }
+body {
+  @apply bg-paper text-ink antialiased;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+}
+
+@media (prefers-color-scheme: dark) {
+  body { @apply bg-ink text-paper; }
+}
+
+.btn { @apply inline-flex items-center justify-center rounded-md px-3 py-2 text-sm font-medium transition; }
+.btn-primary { @apply btn bg-accent text-white hover:opacity-90; }
+.btn-ghost { @apply btn bg-transparent hover:bg-black/5 dark:hover:bg-white/5; }
+.btn-danger { @apply btn bg-red-600 text-white hover:bg-red-700; }
+.chip-warn { @apply inline-flex items-center rounded-full bg-amber-100 text-amber-900 dark:bg-amber-500/20 dark:text-amber-200 px-2 py-0.5 text-xs; }
+.chip-error { @apply inline-flex items-center rounded-full bg-red-100 text-red-900 dark:bg-red-500/20 dark:text-red-200 px-2 py-0.5 text-xs; }
+.input { @apply w-full rounded-md border border-black/10 dark:border-white/10 bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/50; }
+.card { @apply rounded-xl border border-black/5 dark:border-white/10 bg-white/60 dark:bg-white/5 p-4 shadow-sm; }
+.label { @apply text-xs font-medium uppercase tracking-wide text-black/60 dark:text-white/60; }
+.chip { @apply inline-flex items-center rounded-full bg-black/5 dark:bg-white/10 px-2 py-0.5 text-xs; }
+table { @apply w-full text-sm; }
+th { @apply text-left font-medium text-black/60 dark:text-white/60 py-2; }
+td { @apply py-2 border-t border-black/5 dark:border-white/5; }

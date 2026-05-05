@@ -1,0 +1,21 @@
+node_modules
+.next
+out
+build
+dist
+
+# data
+data/fold.db
+data/fold.db-wal
+data/fold.db-shm
+
+# env
+.env.local
+.env
+
+# os
+.DS_Store
+*.log
+
+# org-specific
+AttendanceDocs/
