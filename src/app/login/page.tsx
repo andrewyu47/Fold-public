@@ -19,11 +19,18 @@ export default async function LoginPage({
     const email = String(formData.get("email") || "").trim().toLowerCase();
     const password = String(formData.get("password") || "");
     if (!email || !password) redirect("/login?error=missing");
-    const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
-    if (!user) redirect("/login?error=invalid");
-    const ok = await verifyPassword(password, user.passwordHash);
-    if (!ok) redirect("/login?error=invalid");
-    await createSession(user.id);
+    try {
+      console.log("[login] TURSO_DATABASE_URL:", process.env.TURSO_DATABASE_URL?.slice(0, 30));
+      console.log("[login] TURSO_AUTH_TOKEN set:", !!process.env.TURSO_AUTH_TOKEN);
+      const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+      if (!user) redirect("/login?error=invalid");
+      const ok = await verifyPassword(password, user.passwordHash);
+      if (!ok) redirect("/login?error=invalid");
+      await createSession(user.id);
+    } catch (e: any) {
+      console.error("[login] ERROR:", e?.message, e?.code, JSON.stringify(e));
+      throw e;
+    }
     redirect("/");
   }
 

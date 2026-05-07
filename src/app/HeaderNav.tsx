@@ -8,13 +8,8 @@ const links = [
   { href: "/", label: "Dashboard" },
   { href: "/events", label: "Events" },
   { href: "/students", label: "Students" },
-  { href: "/intake", label: "Intake" },
   { href: "/query", label: "Ask" },
-  { href: "/modify", label: "Modify" },
   { href: "/rides", label: "Rides" },
-  { href: "/vehicles", label: "Vehicles" },
-  { href: "/funnel", label: "Funnel" },
-  { href: "/import", label: "Import" },
 ];
 
 export default function HeaderNav({

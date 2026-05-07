@@ -5,6 +5,7 @@ import { students, attendances, events } from "../../drizzle/schema";
 export type FilterSpec = {
   gender?: "M" | "F";
   year?: string[];
+  memberStatus?: string[];
   isActive?: boolean;
   contactedViaIg?: boolean;
   attendedEventNameContains?: string;
@@ -19,6 +20,8 @@ export async function runFilter(spec: FilterSpec) {
 
   if (spec.gender) conds.push(eq(students.gender, spec.gender));
   if (spec.year?.length) conds.push(inArray(students.year, spec.year as any));
+  if (spec.memberStatus?.length)
+    conds.push(inArray(students.memberStatus, spec.memberStatus as any));
   if (typeof spec.isActive === "boolean") conds.push(eq(students.isActive, spec.isActive));
   if (typeof spec.contactedViaIg === "boolean")
     conds.push(eq(students.contactedViaIg, spec.contactedViaIg));

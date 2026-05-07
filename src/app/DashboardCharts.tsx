@@ -36,7 +36,7 @@ export default function DashboardCharts({
       </div>
 
       <div className="card">
-        <h3 className="font-semibold mb-2">Faith funnel</h3>
+        <h3 className="font-semibold mb-2">Engagement funnel</h3>
         {funnel.every((f) => f.count === 0) ? <Empty /> : (
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={funnel} layout="vertical" margin={{ left: 40 }}>

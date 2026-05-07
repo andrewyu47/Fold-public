@@ -12,6 +12,7 @@ const ALLOWED = new Set([
   "phone",
   "email",
   "igHandle",
+  "memberStatus",
   "isActive",
   "contactedViaIg",
   "primaryContact",
@@ -25,11 +26,14 @@ export async function POST(req: Request) {
 
   const body = (await req.json()) as {
     updates: { studentId: number; patch: Record<string, unknown>; notesAppend?: string }[];
+    creates?: Record<string, unknown>[];
     deletes?: { studentId: number }[];
   };
   const list = Array.isArray(body.updates) ? body.updates : [];
+  const createList = Array.isArray(body.creates) ? body.creates : [];
   const deleteList = Array.isArray(body.deletes) ? body.deletes : [];
   let applied = 0;
+  let created = 0;
   let deleted = 0;
 
   for (const u of list) {
@@ -64,11 +68,25 @@ export async function POST(req: Request) {
     applied += 1;
   }
 
+  for (const c of createList) {
+    const firstName = typeof c.firstName === "string" ? c.firstName.trim() : "";
+    if (!firstName) continue;
+    const vals: Record<string, unknown> = { firstName };
+    for (const k of ["lastName", "gender", "year", "phone", "email", "igHandle", "memberStatus", "primaryContact", "notes"]) {
+      if (typeof c[k] === "string" && c[k]) {
+        vals[k] = k === "igHandle" ? (c[k] as string).replace(/^@/, "") : c[k];
+      }
+    }
+    vals.addedByUserId = user.id;
+    await db.insert(students).values(vals as any);
+    created += 1;
+  }
+
   for (const d of deleteList) {
     if (!Number.isFinite(d.studentId)) continue;
     await db.delete(students).where(eq(students.id, d.studentId));
     deleted += 1;
   }
 
-  return NextResponse.json({ ok: true, applied, deleted });
+  return NextResponse.json({ ok: true, applied, created, deleted });
 }

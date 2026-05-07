@@ -28,7 +28,7 @@ interface Props {
 }
 
 export default function RideSessionEditor(props: Props) {
-  const [enforceRule, setEnforceRule] = useState(false);
+  const [enforceRule, setEnforceRule] = useState(props.initialEnforceRule);
   const [vehicles, setVehicles] = useState<VehicleInPlay[]>(props.initialVehicles);
   const [text, setText] = useState("");
   const [riders, setRiders] = useState<ParsedRider[]>(props.initialRiders);
@@ -264,6 +264,20 @@ export default function RideSessionEditor(props: Props) {
 
   return (
     <div className="space-y-6">
+      <section className="card space-y-3">
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={enforceRule}
+            onChange={(e) => setEnforceRule(e.target.checked)}
+          />
+          <span className="font-medium">Enforce safety best practices</span>
+          <span className="text-xs text-black/60">
+            (no person alone with the opposite gender — driver counts when known)
+          </span>
+        </label>
+      </section>
+
       <section className="card space-y-3">
         <div className="flex items-baseline justify-between">
           <h2 className="text-lg font-semibold">Vehicles in play</h2>

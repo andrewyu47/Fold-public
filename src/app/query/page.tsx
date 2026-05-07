@@ -1,4 +1,4 @@
-import QueryClient from "./QueryClient";
+import AskClient from "./AskClient";
 
 export default function QueryPage() {
   return (
@@ -6,10 +6,10 @@ export default function QueryPage() {
       <div>
         <h1 className="text-2xl font-semibold">Ask</h1>
         <p className="text-sm text-black/60">
-          Ask in plain English, e.g. "all the bros who came to the last event" or "active members who haven't shown up in 30 days".
+          Ask questions or make changes in plain English. Query the roster, update students, or add new people.
         </p>
       </div>
-      <QueryClient />
+      <AskClient />
     </div>
   );
 }

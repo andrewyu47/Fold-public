@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { students, events, attendances } from "../../drizzle/schema";
-import { sql, eq, gte, isNotNull, inArray } from "drizzle-orm";
+import { sql, eq, and, gte, isNotNull, inArray, or, isNull } from "drizzle-orm";
 import DashboardCharts from "./DashboardCharts";
 import QuickAdd from "./events/QuickAdd";
 
@@ -22,7 +22,7 @@ export default async function DashboardPage() {
     .orderBy(events.startDate);
   const overTimeData = overTime.map((r) => ({
     name: r.name,
-    date: new Date(r.date).toLocaleDateString(),
+    date: new Date(r.date).toLocaleDateString("en-US", { timeZone: "UTC" }),
     count: Number(r.count),
     eventId: r.eventId,
   }));
@@ -42,10 +42,16 @@ export default async function DashboardPage() {
     .where(gte(events.startDate, cutoff60))
     .groupBy(attendances.studentId);
   const activeSet = new Set(recentRows.filter((r) => Number(r.c) >= 3).map((r) => r.sid));
+  const coreMembers = await db
+    .select({ c: sql<number>`count(*)` })
+    .from(students)
+    .where(eq(students.memberStatus, "core"));
+
   const funnelData = [
-    { stage: "All members", count: Number(totalStudents[0]?.c ?? 0) },
+    { stage: "All visitors", count: Number(totalStudents[0]?.c ?? 0) },
     { stage: "Repeat (2+)", count: repeatSet.size },
     { stage: "Active (3+ in 60d)", count: activeSet.size },
+    { stage: "Core members", count: Number(coreMembers[0]?.c ?? 0) },
   ];
 
   // 3. Breakdowns
@@ -99,9 +105,7 @@ export default async function DashboardPage() {
     newStudents: Number(newStudentsLast30[0]?.c ?? 0),
   };
 
-  // 5. Active members sorted by 60-day attendance.
-  // Filter and rank by actual event dates (events.startDate), not recordedAt —
-  // backfilled rows would otherwise show today as "last seen".
+  // 5. Hot prospects: non-core students sorted by 60-day attendance.
   const hotRows = await db
     .select({
       sid: attendances.studentId,
@@ -120,7 +124,12 @@ export default async function DashboardPage() {
     ? await db
         .select()
         .from(students)
-        .where(inArray(students.id, hotIds))
+        .where(
+          and(
+            inArray(students.id, hotIds),
+            or(eq(students.memberStatus, "prospect"), eq(students.memberStatus, "member"), isNull(students.memberStatus))
+          )
+        )
     : [];
   const hotById = new Map(hotStudents.map((s) => [s.id, s]));
   const hotProspects = sortedHot
@@ -133,9 +142,10 @@ export default async function DashboardPage() {
         name: `${s.firstName} ${s.lastName ?? ""}`.trim(),
         year: s.year,
         gender: s.gender,
+        status: s.memberStatus,
         primaryContact: s.primaryContact,
         visits: r.visits,
-        lastSeen: new Date(r.lastSeen * 1000).toLocaleDateString(),
+        lastSeen: new Date(r.lastSeen * 1000).toLocaleDateString("en-US", { timeZone: "UTC" }),
       };
     });
 
@@ -159,9 +169,9 @@ export default async function DashboardPage() {
       <section className="card overflow-x-auto">
         <div className="flex items-center justify-between mb-3">
           <div>
-            <h2 className="font-semibold">Active members</h2>
+            <h2 className="font-semibold">Active prospects</h2>
             <p className="text-xs text-black/60">
-              Members ranked by attendance in the last 60 days. Highest priority for follow-up.
+              Non-core members ranked by attendance in the last 60 days. Highest priority for follow-up.
             </p>
           </div>
           <Link href="/students" className="text-xs text-black/60 hover:underline">all students →</Link>
@@ -172,7 +182,7 @@ export default async function DashboardPage() {
           <table>
             <thead>
               <tr>
-                <th>Name</th><th>Year</th><th>Visits (60d)</th><th>Primary contact</th><th>Last seen</th>
+                <th>Name</th><th>Year</th><th>Status</th><th>Visits (60d)</th><th>Primary contact</th><th>Last seen</th>
               </tr>
             </thead>
             <tbody>
@@ -183,6 +193,7 @@ export default async function DashboardPage() {
                     <span className="ml-1 text-xs text-black/40">{s.gender === "M" ? "♂" : s.gender === "F" ? "♀" : ""}</span>
                   </td>
                   <td>{s.year ?? "—"}</td>
+                  <td>{s.status ? <span className="chip">{s.status}</span> : <span className="text-black/30">—</span>}</td>
                   <td className="font-medium">{s.visits}</td>
                   <td className="text-sm">{s.primaryContact ?? <span className="text-black/30">—</span>}</td>
                   <td className="text-sm text-black/60">{s.lastSeen}</td>

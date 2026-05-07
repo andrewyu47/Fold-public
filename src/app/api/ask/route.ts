@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { students } from "../../../../drizzle/schema";
-import { anthropic, MODEL, UPDATE_STUDENTS_TOOL } from "@/lib/claude";
+import { anthropic, MODEL, NL_QUERY_TOOL, UPDATE_STUDENTS_TOOL } from "@/lib/claude";
+import { runFilter, type FilterSpec } from "@/lib/filter-to-sql";
 import { getCurrentUser } from "@/lib/auth";
 import { inArray } from "drizzle-orm";
 
@@ -30,24 +31,35 @@ export async function POST(req: Request) {
     )
     .join("\n");
 
-  const system = `You translate a group organizer's free-text instruction into structured updates for the member database.
-- Each update targets ONE student by their roster id.
-- Match names fuzzily (Mike/Michael, Jess/Jessica), and consider IG handles. If a first-name is shared by multiple students, add the name to "ambiguous" instead of guessing.
-- If the user wants to ADD a brand-new person who is NOT in the roster, use "creates" (not "updates"). Extract any attributes mentioned.
-- Common phrasings:
-  • "mark X as core" / "X is committed" → memberStatus: "core"
-  • "X is a prospect" → memberStatus: "prospect"
-  • "X is now a junior" → year: "junior"
-  • "X is inactive" / "X stopped coming" → isActive: false
-  • "X is in the IG group chat" / "added X to IG" → contactedViaIg: true
-  • "X's phone is 555-..." → phone: "..."
-  • "her primary contact is Aaron" → primaryContact: "Aaron"
-  • "add Sarah Kim, sophomore" → creates with firstName, lastName, year, gender
-  • Anything contextual ("mentioned interest in joining the study group") → use notesAppend, not notes.
-- Use notesAppend for additive observations; only use notes (replace) when the user clearly says "set notes to ...".
-- Be conservative: only set fields the user explicitly mentioned.`;
+  const system = `You are a group management assistant. You handle two types of requests:
 
-  const userMsg = `Roster (id|name (@ig)|year|status|active):\n${rosterCompact || "(empty)"}\n\nInstruction:\n${text}`;
+1. QUERIES — the user is asking a question about their members ("show me all the guys", "who hasn't shown up in 30 days", "active members who are core"). Use the query_students tool.
+2. UPDATES — the user wants to change, add, or remove member data ("mark Kenzie as core", "add Sarah Kim, sophomore", "delete the duplicate entry"). Use the update_students tool.
+
+Decide which tool to use based on the intent. If the user is asking/filtering, use query_students. If the user is modifying/adding/deleting, use update_students.
+
+Query vocabulary:
+- "bros" / "brothers" / "guys" → gender M
+- "sisters" / "girls" → gender F
+- "core" / "core member" / "committed" → memberStatus ["core"]
+- "member" alone → ["member", "core"]
+- "prospect" / "new" (in status context) → ["prospect"]
+- "active" → isActive true. "inactive" → isActive false
+- "cold" / "haven't been" → notAttendedSinceDays
+- Year buckets: freshmen, sophomores, juniors, seniors, grads
+
+Update rules:
+- Match names fuzzily (Mike/Michael, Jess/Jessica), and consider IG handles
+- If a first-name is shared by multiple students, add it to "ambiguous" instead of guessing
+- "mark X as core" → memberStatus: "core"
+- "X is now a junior" → year: "junior"
+- "X is inactive" / "X stopped coming" → isActive: false
+- "X is in the IG group chat" → contactedViaIg: true
+- Contextual observations → use notesAppend, not notes
+- To ADD a new person not in the roster, use "creates"
+- Be conservative: only set fields explicitly mentioned`;
+
+  const userMsg = `Roster (id|name (@ig)|year|status|active):\n${rosterCompact || "(empty)"}\n\nRequest:\n${text}`;
 
   let resp;
   try {
@@ -55,8 +67,8 @@ export async function POST(req: Request) {
       model: MODEL,
       max_tokens: 2048,
       system,
-      tools: [UPDATE_STUDENTS_TOOL],
-      tool_choice: { type: "tool", name: UPDATE_STUDENTS_TOOL.name },
+      tools: [NL_QUERY_TOOL, UPDATE_STUDENTS_TOOL],
+      tool_choice: { type: "any" },
       messages: [{ role: "user", content: userMsg }],
     });
   } catch (err) {
@@ -70,6 +82,18 @@ export async function POST(req: Request) {
   if (!tu || tu.type !== "tool_use") {
     return NextResponse.json({ error: "claude returned no tool use" }, { status: 502 });
   }
+
+  if (tu.name === NL_QUERY_TOOL.name) {
+    const input = tu.input as { filters: FilterSpec; explanation?: string };
+    const rows = await runFilter(input.filters ?? {});
+    return NextResponse.json({
+      mode: "query",
+      rows,
+      explanation: input.explanation ?? "",
+      filters: input.filters ?? {},
+    });
+  }
+
   const out = tu.input as {
     updates: { studentId: number; patch: Record<string, unknown> }[];
     creates?: Record<string, unknown>[];
@@ -78,12 +102,12 @@ export async function POST(req: Request) {
     ambiguous?: string[];
   };
 
-  // Hydrate "before" values for each update so the UI can show a diff
   const updateIds = (out.updates ?? []).map((u) => u.studentId).filter((n) => Number.isFinite(n));
   const deleteIds = (out.deletes ?? []).map((d) => d.studentId).filter((n) => Number.isFinite(n));
   const allIds = [...new Set([...updateIds, ...deleteIds])];
   const before = allIds.length ? await db.select().from(students).where(inArray(students.id, allIds)) : [];
   const beforeById = new Map(before.map((s) => [s.id, s]));
+
   const previews = (out.updates ?? []).map((u) => ({
     studentId: u.studentId,
     before: beforeById.get(u.studentId) ?? null,
@@ -96,6 +120,7 @@ export async function POST(req: Request) {
   }));
 
   return NextResponse.json({
+    mode: "update",
     explanation: out.explanation,
     ambiguous: out.ambiguous ?? [],
     previews,

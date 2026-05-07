@@ -29,6 +29,7 @@ export const students = sqliteTable("students", {
   phone: text("phone"),
   email: text("email"),
   igHandle: text("ig_handle"),
+  memberStatus: text("member_status", { enum: ["prospect", "member", "core"] }),
   isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
   contactedViaIg: integer("contacted_via_ig", { mode: "boolean" }).notNull().default(false),
   primaryContact: text("primary_contact"),

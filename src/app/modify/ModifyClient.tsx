@@ -10,6 +10,7 @@ type Preview = {
   before: Record<string, any> | null;
   patch: Patch;
 };
+type CreatePreview = Record<string, unknown> & { firstName: string };
 type DeletePreview = {
   studentId: number;
   student: Record<string, any> | null;
@@ -24,6 +25,7 @@ const FIELD_LABEL: Record<string, string> = {
   phone: "Phone",
   email: "Email",
   igHandle: "IG handle",
+  memberStatus: "Status",
   isActive: "Active",
   contactedViaIg: "In IG groupchat",
   primaryContact: "Primary contact",
@@ -45,11 +47,12 @@ export default function ModifyClient() {
   const [explanation, setExplanation] = useState("");
   const [ambiguous, setAmbiguous] = useState<string[]>([]);
   const [previews, setPreviews] = useState<Preview[] | null>(null);
+  const [creates, setCreates] = useState<CreatePreview[]>([]);
   const [deletes, setDeletes] = useState<DeletePreview[]>([]);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
-  const [done, setDone] = useState<{ applied: number; deleted: number } | null>(null);
+  const [done, setDone] = useState<{ applied: number; created: number; deleted: number } | null>(null);
 
   async function parse() {
     setError("");
@@ -66,6 +69,7 @@ export default function ModifyClient() {
       setExplanation(data.explanation ?? "");
       setAmbiguous(data.ambiguous ?? []);
       setPreviews(data.previews ?? []);
+      setCreates(data.creates ?? []);
       setDeletes(data.deletes ?? []);
       setConfirmDelete(false);
     } catch (e) {
@@ -78,11 +82,15 @@ export default function ModifyClient() {
   function dropPreview(idx: number) {
     setPreviews((p) => (p ? p.filter((_, i) => i !== idx) : p));
   }
+  function dropCreate(idx: number) {
+    setCreates((c) => c.filter((_, i) => i !== idx));
+  }
   function dropDelete(idx: number) {
     setDeletes((d) => d.filter((_, i) => i !== idx));
   }
   function reset() {
     setPreviews(null);
+    setCreates([]);
     setDeletes([]);
     setConfirmDelete(false);
     setExplanation("");
@@ -92,7 +100,7 @@ export default function ModifyClient() {
   }
 
   function commit() {
-    if (!previews?.length && !deletes.length) return;
+    if (!previews?.length && !creates.length && !deletes.length) return;
     if (deletes.length > 0 && !confirmDelete) {
       setError("Tick the delete confirmation checkbox first.");
       return;
@@ -104,15 +112,16 @@ export default function ModifyClient() {
       const r = await fetch("/api/commit-updates", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ updates, deletes: dels }),
+        body: JSON.stringify({ updates, creates, deletes: dels }),
       });
       const data = await r.json();
       if (!r.ok) {
         setError(data.error ?? "Save failed");
         return;
       }
-      setDone({ applied: data.applied, deleted: data.deleted });
+      setDone({ applied: data.applied, created: data.created, deleted: data.deleted });
       setPreviews(null);
+      setCreates([]);
       setDeletes([]);
       setText("");
       router.refresh();
@@ -127,7 +136,7 @@ export default function ModifyClient() {
           onChange={(e) => setText(e.target.value)}
           rows={3}
           className="input"
-          placeholder='e.g. "set Casey&apos;s primary contact to Sam, and note that she came to Weekly Meeting 5/1"'
+          placeholder='e.g. "mark Kenzie as core member" or "add Sarah Kim, sophomore, IG @sarahk"'
         />
         <div className="flex gap-2">
           <button className="btn-primary" disabled={!text.trim() || parsing} onClick={parse}>
@@ -141,19 +150,20 @@ export default function ModifyClient() {
 
       {done && (
         <div className="card text-sm">
-          ✓ Applied {done.applied} update{done.applied === 1 ? "" : "s"}
+          Applied {done.applied} update{done.applied === 1 ? "" : "s"}
+          {done.created > 0 && `, added ${done.created} student${done.created === 1 ? "" : "s"}`}
           {done.deleted > 0 && `, deleted ${done.deleted} student${done.deleted === 1 ? "" : "s"}`}.
         </div>
       )}
 
       {explanation && (previews || deletes.length > 0) && (
-        <div className="text-sm text-black/60 italic">→ {explanation}</div>
+        <div className="text-sm text-black/60 italic">{explanation}</div>
       )}
 
       {ambiguous.length > 0 && (
         <div className="card border-amber-500/40">
           <div className="text-sm font-medium text-amber-700">
-            ⚠️ Couldn't resolve these names — please be more specific or use last names:
+            Couldn't resolve these names, please be more specific or use last names:
           </div>
           <ul className="list-disc list-inside text-sm mt-1">
             {ambiguous.map((n) => <li key={n}>{n}</li>)}
@@ -212,10 +222,49 @@ export default function ModifyClient() {
         </div>
       )}
 
+      {creates.length > 0 && (
+        <div className="space-y-3">
+          <div className="label">New students ({creates.length})</div>
+          {creates.map((c, i) => {
+            const fields = Object.entries(c).filter(
+              ([k, v]) => v !== undefined && v !== null && v !== ""
+            );
+            return (
+              <div key={i} className="card space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold">
+                    <span className="chip bg-emerald-500/15 text-emerald-700 mr-2">new</span>
+                    {`${c.firstName} ${(c as any).lastName ?? ""}`.trim()}
+                  </span>
+                  <button onClick={() => dropCreate(i)} className="text-xs text-black/40 hover:text-red-600">
+                    skip
+                  </button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="text-sm">
+                    <thead>
+                      <tr><th>Field</th><th>Value</th></tr>
+                    </thead>
+                    <tbody>
+                      {fields.map(([k, v]) => (
+                        <tr key={k}>
+                          <td className="text-xs text-black/60">{FIELD_LABEL[k] ?? k}</td>
+                          <td className="font-medium">{fmt(v)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {deletes.length > 0 && (
         <div className="card border-2 border-red-500/50 bg-red-500/5 space-y-3">
           <div>
-            <h2 className="font-semibold text-red-700">⚠ Permanent deletion</h2>
+            <h2 className="font-semibold text-red-700">Permanent deletion</h2>
             <p className="text-sm text-red-700/80">
               These students will be removed entirely, along with their attendance history. This cannot be undone.
             </p>
@@ -229,7 +278,7 @@ export default function ModifyClient() {
                       ? `${d.student.firstName} ${d.student.lastName ?? ""}`.trim()
                       : `Student #${d.studentId}`}
                   </Link>
-                  {d.reason && <span className="ml-2 text-xs text-black/50">— {d.reason}</span>}
+                  {d.reason && <span className="ml-2 text-xs text-black/50">{d.reason}</span>}
                 </div>
                 <button onClick={() => dropDelete(i)} className="text-xs text-black/40 hover:text-red-700">
                   keep
@@ -248,7 +297,7 @@ export default function ModifyClient() {
         </div>
       )}
 
-      {(previews?.length || deletes.length > 0) && (
+      {((previews?.length ?? 0) > 0 || creates.length > 0 || deletes.length > 0) && (
         <div className="flex justify-end">
           <button
             className={deletes.length > 0 && confirmDelete ? "btn bg-red-600 text-white hover:opacity-90" : "btn-primary"}
@@ -257,16 +306,18 @@ export default function ModifyClient() {
           >
             {pending
               ? "Saving…"
-              : deletes.length > 0
-                ? `Apply ${previews?.length ?? 0} update${(previews?.length ?? 0) === 1 ? "" : "s"} + delete ${deletes.length}`
-                : `Apply ${previews?.length ?? 0} update${(previews?.length ?? 0) === 1 ? "" : "s"}`}
+              : [
+                  (previews?.length ?? 0) > 0 && `${previews!.length} update${previews!.length === 1 ? "" : "s"}`,
+                  creates.length > 0 && `${creates.length} new`,
+                  deletes.length > 0 && `delete ${deletes.length}`,
+                ].filter(Boolean).join(" + ") || "Apply"}
           </button>
         </div>
       )}
 
-      {previews && previews.length === 0 && deletes.length === 0 && ambiguous.length === 0 && (
+      {previews && previews.length === 0 && creates.length === 0 && deletes.length === 0 && ambiguous.length === 0 && (
         <p className="text-sm text-black/50">
-          No updates found from that input. Try being more specific, e.g. "set Casey's primary contact to Sam" or "delete the duplicate Alex Rivera".
+          Nothing found. Try e.g. "mark Kenzie as core member", "add Sarah Kim, sophomore", or "delete the duplicate entry".
         </p>
       )}
     </div>

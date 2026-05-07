@@ -195,7 +195,7 @@ export default async function StudentPage({ params }: { params: Promise<{ id: st
             {history.map(({ a, e }) => (
               <li key={a.id} className="flex justify-between">
                 <Link href={`/events/${e.id}`} className="hover:underline">{e.name}</Link>
-                <span className="text-black/50">{new Date(e.startDate).toLocaleDateString()}</span>
+                <span className="text-black/50">{new Date(e.startDate).toLocaleDateString("en-US", { timeZone: "UTC" })}</span>
               </li>
             ))}
           </ul>

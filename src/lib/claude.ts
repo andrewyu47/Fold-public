@@ -32,6 +32,7 @@ export const PARSE_ATTENDANCE_TOOL: Anthropic.Tool = {
               enum: ["freshman", "sophomore", "junior", "senior", "grad", "other"],
             },
             igHandle: { type: "string", description: "Instagram handle without @" },
+            memberStatus: { type: "string", enum: ["prospect", "member", "core"] },
             notes: { type: "string" },
             rawText: {
               type: "string",
@@ -95,6 +96,7 @@ export const PROPOSE_EVENT_BATCH_TOOL: Anthropic.Tool = {
               enum: ["freshman", "sophomore", "junior", "senior", "grad", "other"],
             },
             igHandle: { type: "string" },
+            memberStatus: { type: "string", enum: ["prospect", "member", "core"] },
             invitedByName: {
               type: "string",
               description:
@@ -179,6 +181,7 @@ export const UPDATE_STUDENTS_TOOL: Anthropic.Tool = {
                 phone: { type: "string" },
                 email: { type: "string" },
                 igHandle: { type: "string", description: "Without leading @" },
+                memberStatus: { type: "string", enum: ["prospect", "member", "core"] },
                 isActive: { type: "boolean" },
                 contactedViaIg: { type: "boolean" },
                 primaryContact: { type: "string" },
@@ -203,6 +206,30 @@ export const UPDATE_STUDENTS_TOOL: Anthropic.Tool = {
         type: "array",
         items: { type: "string" },
         description: "Names from the input that match 0 or 2+ students — leave for the user to resolve.",
+      },
+      creates: {
+        type: "array",
+        description:
+          "Brand-new students to add to the database. Use when the user says 'add', 'create', or 'new student' for someone NOT in the roster. Extract any attributes mentioned (name, year, gender, status, IG, phone, etc.).",
+        items: {
+          type: "object",
+          properties: {
+            firstName: { type: "string" },
+            lastName: { type: "string" },
+            gender: { type: "string", enum: ["M", "F"] },
+            year: {
+              type: "string",
+              enum: ["freshman", "sophomore", "junior", "senior", "grad", "other"],
+            },
+            phone: { type: "string" },
+            email: { type: "string" },
+            igHandle: { type: "string", description: "Without leading @" },
+            memberStatus: { type: "string", enum: ["prospect", "member", "core"] },
+            primaryContact: { type: "string" },
+            notes: { type: "string" },
+          },
+          required: ["firstName"],
+        },
       },
       deletes: {
         type: "array",
@@ -270,6 +297,10 @@ export const NL_QUERY_TOOL: Anthropic.Tool = {
               type: "string",
               enum: ["freshman", "sophomore", "junior", "senior", "grad", "other"],
             },
+          },
+          memberStatus: {
+            type: "array",
+            items: { type: "string", enum: ["prospect", "member", "core"] },
           },
           isActive: { type: "boolean" },
           contactedViaIg: { type: "boolean" },
